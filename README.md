@@ -1,1 +1,0 @@
-# Bitcoin Daily VIP

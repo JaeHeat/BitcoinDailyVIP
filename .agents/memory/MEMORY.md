@@ -1,0 +1,2 @@
+- [Admin router 403 trap](admin-router-403.md) — adminRouter's global requireAdmin middleware intercepts ALL routes, not just /admin/* paths; user routes must be registered BEFORE adminRouter.
+- [OpenAI lib tsconfig react types](openai-react-lib-types.md) — root tsconfig.base.json has "types":[] which blocks auto-discovery; any lib importing from 'react' must have @types/react as a local devDependency.

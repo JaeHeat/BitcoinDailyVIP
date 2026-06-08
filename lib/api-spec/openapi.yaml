@@ -1,0 +1,1911 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: checkout
+    description: Stripe checkout operations
+  - name: subscription
+    description: Subscription management
+  - name: discord
+    description: Discord account linking
+  - name: winback
+    description: Win-back email automation
+  - name: admin
+    description: Owner-facing analytics and management
+  - name: openai
+    description: OpenAI AI chat, image, and audio operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /checkout/session:
+    post:
+      operationId: createCheckoutSession
+      tags: [checkout]
+      summary: Create a Stripe checkout session for VIP subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutSessionRequest"
+      responses:
+        "200":
+          description: Checkout session URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSession"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscription/status:
+    get:
+      operationId: getSubscriptionStatus
+      tags: [subscription]
+      summary: Get the current user's subscription status
+      responses:
+        "200":
+          description: Subscription status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionStatus"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscription/pause:
+    post:
+      operationId: pauseSubscription
+      tags: [subscription]
+      summary: Pause subscription billing
+      responses:
+        "200":
+          description: Subscription paused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionStatus"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscription/resume:
+    post:
+      operationId: resumeSubscription
+      tags: [subscription]
+      summary: Resume a paused subscription
+      responses:
+        "200":
+          description: Subscription resumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionStatus"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscription/cancel:
+    post:
+      operationId: cancelSubscription
+      tags: [subscription]
+      summary: Schedule subscription cancellation at period end
+      responses:
+        "200":
+          description: Cancellation scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionStatus"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscription/reactivate:
+    post:
+      operationId: reactivateSubscription
+      tags: [subscription]
+      summary: Undo a scheduled cancellation (keep subscription active)
+      responses:
+        "200":
+          description: Subscription reactivated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionStatus"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscription/portal:
+    post:
+      operationId: createPortalSession
+      tags: [subscription]
+      summary: Create a Stripe Customer Portal session
+      responses:
+        "200":
+          description: Customer portal URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutSession"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscription/cancel-survey:
+    post:
+      operationId: submitCancellationSurvey
+      tags: [subscription]
+      summary: Submit cancellation survey; optionally accept retention offer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancellationSurveyInput"
+      responses:
+        "200":
+          description: Survey submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionStatus"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscription/change-plan:
+    post:
+      operationId: changePlan
+      tags: [subscription]
+      summary: Switch the active subscription to a different plan (upgrade or downgrade)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePlanRequest"
+      responses:
+        "200":
+          description: Plan changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionStatus"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /winback/cron:
+    post:
+      operationId: processWinbackCron
+      tags: [winback]
+      summary: Process due win-back email jobs (cron, secured by X-Cron-Secret header)
+      responses:
+        "200":
+          description: Jobs processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CronResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /winback/open/{token}:
+    get:
+      operationId: trackEmailOpen
+      tags: [winback]
+      summary: Email open tracking pixel (token is a UUID, not an integer)
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: 1x1 transparent PNG
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+
+  /winback/click/{token}:
+    get:
+      operationId: trackEmailClick
+      tags: [winback]
+      summary: Email click redirect to Stripe Checkout with optional promo code
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "302":
+          description: Redirect to Stripe Checkout
+        "404":
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /winback/stats:
+    get:
+      operationId: getWinbackStats
+      tags: [winback]
+      summary: Win-back email stats for analytics dashboard (admin)
+      responses:
+        "200":
+          description: Win-back stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WinbackStats"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      summary: Business overview stats (admin-only)
+      responses:
+        "200":
+          description: Admin stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/subscribers:
+    get:
+      operationId: getAdminSubscribers
+      tags: [admin]
+      summary: Paginated subscriber list with filters (admin-only)
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Subscriber list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSubscribersResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/churn-chart:
+    get:
+      operationId: getChurnChart
+      tags: [admin]
+      summary: New-subscriber and churn time-series data (admin-only)
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Churn chart data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChurnChartResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/winback-stats:
+    get:
+      operationId: getAdminWinbackStats
+      tags: [admin]
+      summary: Win-back email aggregate stats (admin namespace)
+      responses:
+        "200":
+          description: Win-back stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WinbackStats"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/survey-results:
+    get:
+      operationId: getSurveyResults
+      tags: [admin]
+      summary: Cancellation survey reason breakdown (admin-only)
+      responses:
+        "200":
+          description: Survey results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SurveyResultsResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/grant-trial:
+    post:
+      operationId: grantTrial
+      tags: [admin]
+      summary: Grant a manual free trial to a user by email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantTrialRequest"
+      responses:
+        "200":
+          description: Trial granted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantTrialResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/members/{id}:
+    get:
+      operationId: getMemberProfile
+      tags: [admin]
+      summary: Full member profile with Stripe charge history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Member profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberProfile"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/members/{id}/add-days:
+    post:
+      operationId: addMemberDays
+      tags: [admin]
+      summary: Extend a member's access by adding trial days
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddDaysRequest"
+      responses:
+        "200":
+          description: Days added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantTrialResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/members/{id}/refund:
+    post:
+      operationId: refundMemberCharge
+      tags: [admin]
+      summary: Issue a full or partial refund on a Stripe charge
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefundRequest"
+      responses:
+        "200":
+          description: Refund issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefundResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/members/{id}/cancel:
+    post:
+      operationId: cancelMemberSubscription
+      tags: [admin]
+      summary: Cancel a member's subscription immediately or at period end
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelSubscriptionRequest"
+      responses:
+        "200":
+          description: Action result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionActionResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/members/{id}/resume:
+    post:
+      operationId: resumeMemberSubscription
+      tags: [admin]
+      summary: Resume a paused subscription or undo a scheduled cancellation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Action result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionActionResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/members/{id}/pause:
+    post:
+      operationId: pauseMemberSubscription
+      tags: [admin]
+      summary: Pause billing collection on a subscription
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Action result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionActionResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/members/{id}/reset-trial:
+    post:
+      operationId: resetMemberTrial
+      tags: [admin]
+      summary: Cancel subscription and clear trial history so the member can start a fresh trial
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Action result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionActionResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/members/{id}/change-plan:
+    post:
+      operationId: changeMemberPlan
+      tags: [admin]
+      summary: Change a member's subscription plan immediately with prorations
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePlanRequest"
+      responses:
+        "200":
+          description: Action result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionActionResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/members/{id}/apply-coupon:
+    post:
+      operationId: applyMemberCoupon
+      tags: [admin]
+      summary: Apply a coupon discount to a member's subscription
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplyCouponRequest"
+      responses:
+        "200":
+          description: Action result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionActionResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/members/{id}/remove-discount:
+    post:
+      operationId: removeMemberDiscount
+      tags: [admin]
+      summary: Remove the active discount from a member's subscription
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Action result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionActionResult"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/coupons:
+    get:
+      operationId: listCoupons
+      tags: [admin]
+      summary: List all Stripe coupons
+      responses:
+        "200":
+          description: Coupon list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CouponListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createCoupon
+      tags: [admin]
+      summary: Create a new Stripe coupon
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CouponCreateRequest"
+      responses:
+        "200":
+          description: Coupon created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CouponResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /discord/oauth/url:
+    get:
+      operationId: getDiscordOAuthUrl
+      tags: [discord]
+      summary: Get Discord OAuth URL for account linking
+      responses:
+        "200":
+          description: OAuth URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OAuthUrl"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /discord/status:
+    get:
+      operationId: getDiscordStatus
+      tags: [discord]
+      summary: Get Discord connection status for the current user
+      responses:
+        "200":
+          description: Discord connection status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordStatus"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /discord/disconnect:
+    post:
+      operationId: disconnectDiscord
+      tags: [discord]
+      summary: Unlink Discord account
+      responses:
+        "200":
+          description: Discord account unlinked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordStatus"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /discord/sync-logs:
+    get:
+      operationId: getDiscordSyncLogs
+      tags: [discord]
+      summary: List recent Discord sync log entries (admin)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: failuresOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Discord sync log entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordSyncLogsResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /openai/conversations:
+    get:
+      operationId: listOpenaiConversations
+      tags: [openai]
+      summary: List all conversations
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OpenaiConversation"
+    post:
+      operationId: createOpenaiConversation
+      tags: [openai]
+      summary: Create a new conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenaiConversationInput"
+      responses:
+        "201":
+          description: Created conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiConversation"
+  /openai/conversations/{id}:
+    get:
+      operationId: getOpenaiConversation
+      tags: [openai]
+      summary: Get conversation with messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiConversationWithMessages"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+    delete:
+      operationId: deleteOpenaiConversation
+      tags: [openai]
+      summary: Delete a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+  /openai/conversations/{id}/messages:
+    get:
+      operationId: listOpenaiMessages
+      tags: [openai]
+      summary: List messages in a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OpenaiMessage"
+    post:
+      operationId: sendOpenaiMessage
+      tags: [openai]
+      summary: Send a text message and receive a streaming text response
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenaiMessageInput"
+      responses:
+        "200":
+          description: SSE stream of assistant text chunks
+          content:
+            text/event-stream: {}
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    CheckoutSession:
+      type: object
+      properties:
+        url:
+          type: string
+      required:
+        - url
+
+    SubscriptionStatus:
+      type: object
+      properties:
+        subscriptionId:
+          type: ["string", "null"]
+        status:
+          type: string
+        planTier:
+          type: ["string", "null"]
+        currentPeriodEnd:
+          type: ["string", "null"]
+        resumeDate:
+          type: ["string", "null"]
+        cancelAtPeriodEnd:
+          type: boolean
+        paused:
+          type: boolean
+      required:
+        - status
+        - cancelAtPeriodEnd
+        - paused
+
+    CancellationSurveyInput:
+      type: object
+      properties:
+        reason:
+          type: string
+        offerAccepted:
+          type: boolean
+      required:
+        - reason
+        - offerAccepted
+
+    OAuthUrl:
+      type: object
+      properties:
+        url:
+          type: string
+      required:
+        - url
+
+    DiscordSyncLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: ["integer", "null"]
+        discordUserId:
+          type: ["string", "null"]
+        action:
+          type: string
+        stripeEvent:
+          type: ["string", "null"]
+        success:
+          type: boolean
+        errorMessage:
+          type: ["string", "null"]
+        attempts:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - action
+        - success
+        - attempts
+        - createdAt
+
+    DiscordSyncLogsResponse:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscordSyncLog"
+        failureCount:
+          type: integer
+        totalCount:
+          type: integer
+      required:
+        - logs
+        - failureCount
+        - totalCount
+
+    DiscordStatus:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        discordUserId:
+          type: ["string", "null"]
+        username:
+          type: ["string", "null"]
+      required:
+        - connected
+
+    CronResult:
+      type: object
+      properties:
+        processed:
+          type: integer
+        failed:
+          type: integer
+      required:
+        - processed
+        - failed
+
+    WinbackStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        sent:
+          type: integer
+        opened:
+          type: integer
+        clicked:
+          type: integer
+        rejoined:
+          type: integer
+        cancelled:
+          type: integer
+        byType:
+          type: array
+          items:
+            $ref: "#/components/schemas/WinbackStatsByType"
+      required:
+        - total
+        - sent
+        - opened
+        - clicked
+        - rejoined
+        - cancelled
+        - byType
+
+    WinbackStatsByType:
+      type: object
+      properties:
+        jobType:
+          type: string
+        total:
+          type: integer
+        sent:
+          type: integer
+        opened:
+          type: integer
+        clicked:
+          type: integer
+      required:
+        - jobType
+        - total
+        - sent
+        - opened
+        - clicked
+
+    AdminStats:
+      type: object
+      properties:
+        mrr:
+          type: integer
+        grossVolume:
+          type: integer
+        netVolume:
+          type: integer
+        activeSubscribers:
+          type: integer
+        pausedSubscribers:
+          type: integer
+        newUsersThisMonth:
+          type: integer
+        newSubscribersThisMonth:
+          type: integer
+        newTrialsThisMonth:
+          type: integer
+        trialConversionRate:
+          type: integer
+        churnedThisMonth:
+          type: integer
+        churnRate:
+          type: number
+        discordSyncFailures:
+          type: integer
+        totalSubscribers:
+          type: integer
+      required:
+        - mrr
+        - grossVolume
+        - netVolume
+        - activeSubscribers
+        - pausedSubscribers
+        - newUsersThisMonth
+        - newSubscribersThisMonth
+        - newTrialsThisMonth
+        - trialConversionRate
+        - churnedThisMonth
+        - churnRate
+        - discordSyncFailures
+        - totalSubscribers
+
+    AdminSubscriber:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        subscriptionStatus:
+          type: string
+        planTier:
+          type: ["string", "null"]
+        discordConnected:
+          type: boolean
+        discordUsername:
+          type: ["string", "null"]
+        joinedAt:
+          type: string
+      required:
+        - id
+        - email
+        - subscriptionStatus
+        - discordConnected
+        - joinedAt
+
+    AdminSubscribersResponse:
+      type: object
+      properties:
+        subscribers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminSubscriber"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required:
+        - subscribers
+        - total
+        - page
+        - limit
+
+    ChurnChartPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        newSubscribers:
+          type: integer
+        churned:
+          type: integer
+      required:
+        - date
+        - newSubscribers
+        - churned
+
+    ChurnChartResponse:
+      type: object
+      properties:
+        days:
+          type: integer
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChurnChartPoint"
+      required:
+        - days
+        - data
+
+    SurveyReason:
+      type: object
+      properties:
+        reason:
+          type: string
+        count:
+          type: integer
+        percentage:
+          type: integer
+      required:
+        - reason
+        - count
+        - percentage
+
+    SurveyResultsResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        offerAcceptedCount:
+          type: integer
+        reasons:
+          type: array
+          items:
+            $ref: "#/components/schemas/SurveyReason"
+      required:
+        - total
+        - offerAcceptedCount
+        - reasons
+
+    CheckoutSessionRequest:
+      type: object
+      properties:
+        priceType:
+          type: string
+          enum: [monthly, yearly, premium, premium-yearly]
+        couponCode:
+          type: string
+      required:
+        - priceType
+
+    ChangePlanRequest:
+      type: object
+      properties:
+        priceType:
+          type: string
+          enum: [monthly, yearly, premium, premium-yearly]
+      required:
+        - priceType
+
+    AddDaysRequest:
+      type: object
+      properties:
+        days:
+          type: integer
+      required:
+        - days
+
+    RefundRequest:
+      type: object
+      properties:
+        chargeId:
+          type: string
+        amount:
+          type: integer
+          description: Amount in cents (omit for full refund)
+      required:
+        - chargeId
+
+    RefundResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        refundId:
+          type: string
+        amount:
+          type: integer
+        message:
+          type: string
+      required:
+        - success
+        - refundId
+        - amount
+        - message
+
+    StripeCharge:
+      type: object
+      properties:
+        id:
+          type: string
+        amount:
+          type: integer
+        currency:
+          type: string
+        status:
+          type: string
+        created:
+          type: string
+        refunded:
+          type: boolean
+        amountRefunded:
+          type: integer
+        receiptUrl:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+      required:
+        - id
+        - amount
+        - currency
+        - status
+        - created
+        - refunded
+        - amountRefunded
+
+    MemberProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        subscriptionStatus:
+          type: ["string", "null"]
+        planTier:
+          type: ["string", "null"]
+        discordConnected:
+          type: boolean
+        discordUsername:
+          type: ["string", "null"]
+        joinedAt:
+          type: string
+        manualTrialEndsAt:
+          type: ["string", "null"]
+        stripeCustomerId:
+          type: ["string", "null"]
+        subscriptionId:
+          type: ["string", "null"]
+        charges:
+          type: array
+          items:
+            $ref: "#/components/schemas/StripeCharge"
+        liveSubscription:
+          oneOf:
+            - $ref: "#/components/schemas/LiveSubscriptionDetail"
+            - type: "null"
+      required:
+        - id
+        - email
+        - discordConnected
+        - joinedAt
+        - charges
+
+    CouponCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        percentOff:
+          type: number
+        amountOff:
+          type: integer
+          description: Amount off in cents (use instead of percentOff)
+        currency:
+          type: string
+          description: Required when amountOff is set
+        duration:
+          type: string
+          enum: [once, repeating, forever]
+        durationInMonths:
+          type: integer
+          description: Required when duration is repeating
+        maxRedemptions:
+          type: integer
+        code:
+          type: string
+          description: Promo code string (creates a promotion code for this coupon)
+      required:
+        - name
+        - duration
+
+    CouponResult:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: ["string", "null"]
+        percentOff:
+          type: ["number", "null"]
+        amountOff:
+          type: ["integer", "null"]
+        currency:
+          type: ["string", "null"]
+        duration:
+          type: string
+        durationInMonths:
+          type: ["integer", "null"]
+        valid:
+          type: boolean
+        timesRedeemed:
+          type: integer
+        maxRedemptions:
+          type: ["integer", "null"]
+        promoCode:
+          type: ["string", "null"]
+          description: Promotion code string if one was created
+      required:
+        - id
+        - duration
+        - valid
+        - timesRedeemed
+
+    CouponListResponse:
+      type: object
+      properties:
+        coupons:
+          type: array
+          items:
+            $ref: "#/components/schemas/CouponResult"
+      required:
+        - coupons
+
+    GrantTrialRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        days:
+          type: integer
+      required:
+        - email
+        - days
+
+    GrantTrialResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        trialEndsAt:
+          type: string
+      required:
+        - success
+        - message
+        - trialEndsAt
+
+    LiveSubscriptionDetail:
+      type: object
+      properties:
+        trialEnd:
+          type: ["string", "null"]
+        currentPeriodEnd:
+          type: ["string", "null"]
+        cancelAtPeriodEnd:
+          type: boolean
+        cancelAt:
+          type: ["string", "null"]
+        paused:
+          type: boolean
+        discountId:
+          type: ["string", "null"]
+        discountName:
+          type: ["string", "null"]
+        discountPercentOff:
+          type: ["number", "null"]
+        discountAmountOff:
+          type: ["integer", "null"]
+        currentPriceId:
+          type: ["string", "null"]
+        currentPriceAmount:
+          type: ["integer", "null"]
+        currentPriceCurrency:
+          type: ["string", "null"]
+        currentPriceInterval:
+          type: ["string", "null"]
+      required:
+        - cancelAtPeriodEnd
+        - paused
+
+    SubscriptionActionResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+        - message
+
+    CancelSubscriptionRequest:
+      type: object
+      properties:
+        immediately:
+          type: boolean
+      required:
+        - immediately
+
+    ApplyCouponRequest:
+      type: object
+      properties:
+        couponId:
+          type: string
+      required:
+        - couponId
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    OpenaiConversation:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - createdAt
+    OpenaiMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        conversationId:
+          type: integer
+        role:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - conversationId
+        - role
+        - content
+        - createdAt
+    OpenaiConversationInput:
+      type: object
+      properties:
+        title:
+          type: string
+      required:
+        - title
+    OpenaiMessageInput:
+      type: object
+      properties:
+        content:
+          type: string
+      required:
+        - content
+    OpenaiConversationWithMessages:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpenaiMessage"
+      required:
+        - id
+        - title
+        - createdAt
+        - messages
+    OpenaiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
