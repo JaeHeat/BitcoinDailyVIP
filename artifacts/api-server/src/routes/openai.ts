@@ -122,7 +122,7 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const clerkId = req.userId!;
-      const conversationId = parseInt(req.params.id!, 10);
+      const conversationId = parseInt(String(req.params.id), 10);
       const { content } = req.body as { content?: string };
 
       if (!content?.trim()) {
@@ -225,7 +225,7 @@ router.delete(
   async (req: Request, res: Response) => {
     try {
       const clerkId = req.userId!;
-      const conversationId = parseInt(req.params.id!, 10);
+      const conversationId = parseInt(String(req.params.id), 10);
 
       const convo = await db.query.conversations.findFirst({
         where: and(

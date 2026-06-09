@@ -47,3 +47,11 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Local tooling (Claude Code launch configs, etc.)
+.claude/

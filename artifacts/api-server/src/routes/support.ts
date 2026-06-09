@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { requireAuth, getOrCreateUser } from "../lib/auth";
 import { clerkClient } from "@clerk/express";
 import { getUncachableResendClient } from "../lib/resend";
@@ -17,7 +17,7 @@ function escapeHtml(text: string): string {
 
 const router = Router();
 
-router.post("/support/ticket", requireAuth, async (req, res) => {
+router.post("/support/ticket", requireAuth, async (req: Request, res: Response) => {
   try {
     const clerkId = req.userId!;
     const { subject, message } = req.body as { subject?: string; message?: string };
@@ -82,7 +82,7 @@ router.post("/support/ticket", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/support/tickets", requireAuth, async (req, res) => {
+router.get("/support/tickets", requireAuth, async (req: Request, res: Response) => {
   try {
     const clerkId = req.userId!;
     const tickets = await db

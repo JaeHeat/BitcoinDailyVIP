@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { useUser } from "@clerk/react";
+import { useUser } from "@/lib/clerk-compat";
 import { useLocation } from "wouter";
+import { AdminReviews } from "@/components/admin-reviews";
 import {
   useGetAdminStats,
   useGetAdminSubscribers,
@@ -579,7 +580,9 @@ function ChurnChart({
   const fillPath = (key: "newSubscribers" | "churned") =>
     `${linePath(key)} L ${px(data.length - 1).toFixed(1)} ${(PAD.top + cH).toFixed(1)} L ${PAD.left} ${(PAD.top + cH).toFixed(1)} Z`;
 
-  const yTicks = [0, Math.ceil(maxY / 2), maxY];
+  // Dedupe so low/flat data (maxY 0 or 1) doesn't produce repeated tick
+  // values — which both warned on duplicate keys and overlapped axis labels.
+  const yTicks = [...new Set([0, Math.ceil(maxY / 2), maxY])];
   const xTickEvery = Math.max(1, Math.floor(data.length / 6));
 
   return (
@@ -600,8 +603,8 @@ function ChurnChart({
           </linearGradient>
         </defs>
 
-        {yTicks.map((v) => (
-          <g key={v}>
+        {yTicks.map((v, ti) => (
+          <g key={ti}>
             <line
               x1={PAD.left}
               x2={W - PAD.right}
@@ -1465,6 +1468,11 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Member review moderation */}
+            <div className="mt-8">
+              <AdminReviews />
+            </div>
           </>
         )}
       </main>

@@ -112,5 +112,20 @@ export const supportTicketsTable = pgTable("support_tickets", {
 
 export type SupportTicket = typeof supportTicketsTable.$inferSelect;
 
+// On-site member reviews. Submitted by members (gated to ≥30 days), moderated
+// by an admin, then the approved ones are shown on the public landing page.
+export const reviewsTable = pgTable("reviews", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => usersTable.id).notNull(),
+  authorName: text("author_name").notNull(), // display name shown publicly
+  rating: integer("rating").notNull(), // 1–5
+  result: text("result"), // optional short outcome line, e.g. "Up 18% in 60 days"
+  body: text("body").notNull(),
+  status: text("status").notNull().default("pending"), // "pending" | "approved" | "rejected"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type Review = typeof reviewsTable.$inferSelect;
+
 export * from "./conversations";
 export * from "./messages";

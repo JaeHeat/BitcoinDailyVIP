@@ -74,6 +74,11 @@ export default function GettingStarted() {
   const activeIndex = modules.findIndex((m) => m.id === activeId);
   const activeModule = modules[activeIndex] ?? null;
   const allDone = modules.length > 0 && modules.every((m) => completed.has(m.id));
+  const doneCount = modules.filter((m) => completed.has(m.id)).length;
+  const totalMinutes = modules.reduce((sum, m) => {
+    const n = parseInt(String(m.duration).match(/\d+/)?.[0] ?? "0", 10);
+    return sum + (Number.isNaN(n) ? 0 : n);
+  }, 0);
 
   function toggleComplete(id: string) {
     setCompleted((prev) => {
@@ -129,8 +134,22 @@ export default function GettingStarted() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight">Getting Started</h1>
           <p className="text-muted-foreground mt-1">
-            5 short modules — get up to speed and start trading with edge from day one
+            {modules.length || 5} short modules{totalMinutes ? ` · about ${totalMinutes} min total` : ""} — get up to speed and start trading with edge from day one
           </p>
+          {modules.length > 0 && (
+            <div className="mt-4 max-w-md">
+              <div className="flex items-center justify-between text-xs mb-1.5">
+                <span className="font-medium text-muted-foreground">Your progress</span>
+                <span className="font-semibold text-foreground tabular-nums">{doneCount} / {modules.length} complete</span>
+              </div>
+              <div className="h-2 rounded-full bg-border overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-primary to-amber-400 rounded-full transition-all duration-700"
+                  style={{ width: `${(doneCount / modules.length) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {allDone && (

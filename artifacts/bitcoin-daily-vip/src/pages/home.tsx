@@ -1,12 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { motion, type Variants } from "framer-motion";
 import { Link } from "wouter";
 import { ChevronRight, ArrowRight, CheckCircle2, TrendingUp, ShieldAlert, BarChart3, Users, Zap, MessageSquare, ExternalLink, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { CountUp } from "@/components/count-up";
+import { SignalCard } from "@/components/signal-card";
 import heroImg from "@/assets/images/hero-bitcoin.png";
+
+// Lazy so the recharts chunk loads only when the chart scrolls into view.
+const EquityCurveChart = lazy(() => import("@/components/equity-curve-chart"));
 
 const fadeInUp: Variants = {
   hidden: { opacity: 0, y: 40 },
@@ -47,55 +51,6 @@ type Trade = {
   timeframe: string;
   rMultiple: number;
 };
-
-function EquityCurveChart({ trades }: { trades: Trade[] }) {
-  if (!trades.length) return null;
-
-  const byDate = new Map<string, number>();
-  for (const t of trades) byDate.set(t.date, t.cumulativePl);
-
-  const data = Array.from(byDate.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, value]) => ({ date, value: Math.round(value * 100) / 100 }));
-
-  const monthStarts = data.filter((d) => d.date.slice(-2) === "01").map((d) => d.date);
-  const ticks = Array.from(new Set([data[0].date, ...monthStarts, data[data.length - 1].date]));
-
-  return (
-    <ResponsiveContainer width="100%" height={220}>
-      <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
-        <defs>
-          <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#f7931a" stopOpacity={0.25} />
-            <stop offset="95%" stopColor="#f7931a" stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-        <XAxis
-          dataKey="date"
-          ticks={ticks}
-          tick={{ fontSize: 10, fill: "rgba(255,255,255,0.35)" }}
-          tickFormatter={(v) => new Date(v + "T12:00:00").toLocaleDateString("en-US", { month: "short", year: "2-digit" })}
-          axisLine={false}
-          tickLine={false}
-        />
-        <YAxis
-          tick={{ fontSize: 10, fill: "rgba(255,255,255,0.35)" }}
-          tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
-          axisLine={false}
-          tickLine={false}
-          width={38}
-        />
-        <Tooltip
-          contentStyle={{ backgroundColor: "rgba(12,12,12,0.97)", border: "1px solid rgba(247,147,26,0.3)", borderRadius: "8px", fontSize: 12 }}
-          formatter={(value: number) => [`$${value.toLocaleString()}`, "Cumulative P&L"]}
-          labelFormatter={(label: string) => new Date(label + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-        />
-        <Area type="monotone" dataKey="value" stroke="#f7931a" strokeWidth={2} fill="url(#equityGradient)" dot={false} activeDot={{ r: 4, fill: "#f7931a" }} />
-      </AreaChart>
-    </ResponsiveContainer>
-  );
-}
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -419,6 +374,7 @@ export default function Home() {
   const [scrolled, setScrolled] = useState(false);
   const [liveStats, setLiveStats] = useState<LiveStats | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [reviews, setReviews] = useState<{ id: number; authorName: string; rating: number; result?: string | null; body: string }[]>([]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 480);
@@ -435,6 +391,11 @@ export default function Home() {
     fetch(`${import.meta.env.BASE_URL}api/public/trades`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { trades: Trade[] } | null) => { if (data?.trades) setTrades(data.trades); })
+      .catch(() => {});
+
+    fetch(`${import.meta.env.BASE_URL}api/public/reviews`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { reviews: typeof reviews } | null) => { if (data?.reviews) setReviews(data.reviews); })
       .catch(() => {});
   }, []);
 
@@ -486,6 +447,7 @@ export default function Home() {
       const winRate = Math.round((wins / total) * 100);
       if (winRate < 70) continue;
       const pl = slice.reduce((sum, t) => sum + t.pl, 0);
+      if (pl <= 0) continue; // the "on a heater" panel must be genuinely profitable
       // Keep if higher win rate; on tie, prefer larger window (more sustained)
       if (!best || winRate > best.winRate || (winRate === best.winRate && total > best.tradeCount)) {
         best = {
@@ -618,6 +580,33 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Trust strip — concrete proof points at the decision point */}
+        <div className="border-b border-border/50 bg-card/20 px-4 py-4">
+          <div className="container max-w-5xl mx-auto flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-muted-foreground">
+            <a
+              href="https://tradrx.io/shared/DAD01529995B"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2 hover:text-foreground transition-colors"
+            >
+              <ShieldAlert className="h-4 w-4 text-primary shrink-0" />
+              <span>Track record verified on TradrX</span>
+            </a>
+            <span className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-primary shrink-0" />
+              Real-time Discord alerts
+            </span>
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
+              Cancel anytime
+            </span>
+            <span className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-primary shrink-0" />
+              Active private community
+            </span>
+          </div>
+        </div>
+
         {/* Recent Performance — only shown when on a heater */}
         {recentStats && (
           <section className="py-10 px-4 border-b border-border/50 bg-emerald-950/20">
@@ -648,7 +637,7 @@ export default function Home() {
                   {/* Stats grid */}
                   <div className="flex flex-wrap gap-6 md:gap-10 flex-1">
                     <div>
-                      <p className="text-3xl md:text-4xl font-extrabold text-emerald-400 tracking-tight">{recentStats.winRate}%</p>
+                      <p className="text-3xl md:text-4xl font-extrabold text-emerald-400 tracking-tight"><CountUp value={`${recentStats.winRate}%`} /></p>
                       <p className="text-xs text-muted-foreground mt-1">Win Rate</p>
                     </div>
                     <div>
@@ -661,7 +650,7 @@ export default function Home() {
                     </div>
                     <div>
                       <p className="text-3xl md:text-4xl font-extrabold text-emerald-400 tracking-tight">
-                        +${Math.round(recentStats.pl).toLocaleString()}
+                        <CountUp value={`+$${Math.round(recentStats.pl).toLocaleString()}`} />
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">P&L ({recentStats.tradeCount} trades)</p>
                     </div>
@@ -722,7 +711,7 @@ export default function Home() {
                     className={`rounded-xl border p-4 text-center ${i === 0 ? "border-primary/50 bg-primary/5 shadow-[0_0_20px_rgba(247,147,26,0.1)]" : "border-border/50 bg-card/50"}`}
                   >
                     <p className={`text-2xl md:text-3xl font-extrabold tracking-tight ${i === 0 ? "text-primary" : "text-foreground"}`}>
-                      {stat.value}
+                      <CountUp value={stat.value} />
                     </p>
                     <p className="text-xs font-semibold text-foreground mt-1">{stat.label}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">{stat.sub}</p>
@@ -749,6 +738,9 @@ export default function Home() {
                 <p className="text-xs text-muted-foreground mt-4">
                   All trades published in real-time. Verify the full history at TradrX.io — nothing is hidden or back-tested.
                 </p>
+                <p className="text-[11px] text-muted-foreground/70 mt-2 leading-relaxed">
+                  Past performance is not indicative of future results. Trading involves substantial risk of loss and is not suitable for everyone. These figures reflect historical signal performance, not individual member results.
+                </p>
               </motion.div>
             </motion.div>
           </div>
@@ -768,6 +760,84 @@ export default function Home() {
             </a>
           </div>
         </div>
+
+        {/* How it works — 3 dead-simple steps + a real signal */}
+        <section className="py-20 px-4 bg-background border-b border-border/50">
+          <div className="container max-w-6xl mx-auto">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl md:text-4xl font-bold tracking-tight">How it works</h2>
+              <p className="text-muted-foreground mt-3 max-w-xl mx-auto">
+                No guesswork. Three simple steps — you could place your first trade today.
+              </p>
+            </div>
+
+            <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+              {/* Steps */}
+              <motion.ol
+                className="space-y-6"
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, margin: "-60px" }}
+                variants={staggerContainer}
+              >
+                {[
+                  { icon: CheckCircle2, title: "Join & connect Discord", desc: "Start your free trial and link Discord in one click. Your VIP access is granted automatically." },
+                  { icon: MessageSquare, title: "Get the alert", desc: "Every setup is posted live in Discord the moment it triggers — with a morning market breakdown each day." },
+                  { icon: TrendingUp, title: "Copy entry, stop & target", desc: "Each signal gives you the exact entry, stop-loss, and take-profits. Size it with our calculator and you're in." },
+                ].map((step, i) => (
+                  <motion.li key={i} variants={fadeInUp} className="flex gap-4">
+                    <div className="flex flex-col items-center shrink-0">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center font-bold text-primary">
+                        {i + 1}
+                      </div>
+                      {i < 2 && <div className="w-px flex-1 bg-border/60 mt-1" />}
+                    </div>
+                    <div className="pb-2">
+                      <div className="flex items-center gap-2">
+                        <step.icon className="h-4 w-4 text-primary" />
+                        <h3 className="font-bold text-lg">{step.title}</h3>
+                      </div>
+                      <p className="text-muted-foreground mt-1 leading-relaxed">{step.desc}</p>
+                    </div>
+                  </motion.li>
+                ))}
+              </motion.ol>
+
+              {/* Sample signal */}
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <p className="text-center text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+                  This is exactly what you get
+                </p>
+                <SignalCard />
+                <p className="text-center text-xs text-muted-foreground mt-3">
+                  Sample. Every real signal is posted live and logged publicly.
+                </p>
+              </motion.div>
+            </div>
+
+            {/* Verify-it trust line */}
+            <div className="mt-14 rounded-2xl border border-primary/20 bg-primary/5 px-6 py-5 flex flex-col sm:flex-row items-center justify-center gap-3 text-center">
+              <ShieldAlert className="h-5 w-5 text-primary shrink-0" />
+              <p className="text-sm sm:text-base">
+                <span className="font-semibold">Don't trust us — verify it.</span>{" "}
+                <span className="text-muted-foreground">Every trade above is published to a public journal, before you pay a cent.</span>
+              </p>
+              <a
+                href="https://tradrx.io/shared/DAD01529995B"
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline whitespace-nowrap"
+              >
+                See every trade <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </div>
+          </div>
+        </section>
 
         {/* Equity Curve + Calendar */}
         {trades.length > 0 && (
@@ -804,18 +874,20 @@ export default function Home() {
                       <p className="text-xs text-muted-foreground mt-0.5">Cumulative P&L across all trades</p>
                     </div>
                     {trades.length > 0 && (() => {
-                      const last = trades[trades.length - 1];
+                      const pl = Math.round(trades[trades.length - 1].cumulativePl);
                       return (
                         <div className="text-right">
-                          <p className="text-xl font-extrabold text-emerald-400">
-                            +${Math.round(last.cumulativePl).toLocaleString()}
+                          <p className={`text-xl font-extrabold ${pl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                            {pl >= 0 ? "+" : "-"}${Math.abs(pl).toLocaleString()}
                           </p>
                           <p className="text-xs text-muted-foreground">total P&L</p>
                         </div>
                       );
                     })()}
                   </div>
-                  <EquityCurveChart trades={trades} />
+                  <Suspense fallback={<div className="h-[220px] rounded-lg bg-card/30 border border-border/30 animate-pulse" />}>
+                    <EquityCurveChart trades={trades} />
+                  </Suspense>
                 </motion.div>
 
                 {/* Trade Calendar */}
@@ -903,50 +975,124 @@ export default function Home() {
           </div>
         </section>
 
+        {/* What a week looks like + Is this for you? */}
+        <section className="py-20 px-4 bg-background border-b border-border/50">
+          <div className="container max-w-5xl mx-auto">
+            {/* Weekly rhythm */}
+            <div className="text-center mb-12">
+              <h2 className="text-2xl md:text-3xl font-bold tracking-tight">What a week looks like</h2>
+              <p className="text-muted-foreground mt-2">Calm and clear — not 24/7 chart-watching.</p>
+            </div>
+            <div className="grid sm:grid-cols-3 gap-4 mb-16">
+              {[
+                { when: "Each morning", what: "A short market breakdown drops in Discord — key levels and what we're watching. 2-minute read." },
+                { when: "When a setup triggers", what: "You get an alert with the exact entry, stop, and targets. Place it, or skip it — your call." },
+                { when: "As it plays out", what: "Live updates until the trade closes. Everything is logged to the public journal automatically." },
+              ].map((s, i) => (
+                <div key={i} className="rounded-xl border border-border/50 bg-card/30 p-5">
+                  <p className="text-xs font-bold uppercase tracking-widest text-primary mb-2">{s.when}</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{s.what}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Is this for you? */}
+            <div className="text-center mb-8">
+              <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Is this for you?</h2>
+              <p className="text-muted-foreground mt-2">We'd rather be honest than oversell. Here's the truth.</p>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
+              <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-6">
+                <p className="font-bold text-emerald-400 mb-4">✓ A great fit if you…</p>
+                <ul className="space-y-2.5 text-sm text-muted-foreground">
+                  {[
+                    "Understand basic order types (market, limit, stop)",
+                    "Want a proven system instead of guessing",
+                    "Can follow a clear entry, stop, and target",
+                    "Have a funded exchange or prop account ready",
+                  ].map((t, i) => (
+                    <li key={i} className="flex gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />{t}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-2xl border border-border/50 bg-card/30 p-6">
+                <p className="font-bold text-muted-foreground mb-4">✕ Probably not yet if you…</p>
+                <ul className="space-y-2.5 text-sm text-muted-foreground">
+                  {[
+                    "Have never placed a trade before",
+                    "Are looking for guaranteed or get-rich-quick returns",
+                    "Won't use a stop-loss or risk management",
+                    "Want someone to trade the account for you",
+                  ].map((t, i) => (
+                    <li key={i} className="flex gap-2"><X className="h-4 w-4 text-muted-foreground/60 shrink-0 mt-0.5" />{t}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Pricing Section */}
         <section className="py-24 px-4 bg-muted/20 border-y border-border/50" id="pricing">
           <PricingSection />
         </section>
 
-        {/* Social Proof */}
-        <section className="py-24 px-4 bg-background">
-          <div className="container max-w-6xl mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-4 tracking-tight">Receipts.</h2>
-            <p className="text-center text-muted-foreground mb-16 max-w-xl mx-auto">
-              Don't take our word for it — the public journal is right there.{" "}
-              <a href="https://tradrx.io/shared/DAD01529995B" target="_blank" rel="noreferrer" className="text-primary hover:underline">
-                Check every trade yourself.
-              </a>
-            </p>
+        {/* Social Proof — real member reviews; hidden entirely until there are any */}
+        {reviews.length > 0 && (
+          <section className="py-24 px-4 bg-background">
+            <div className="container max-w-6xl mx-auto">
+              <h2 className="text-3xl md:text-4xl font-bold text-center mb-4 tracking-tight">What members say</h2>
+              <p className="text-center text-muted-foreground mb-3 max-w-xl mx-auto">
+                Real reviews from verified members.{" "}
+                <a href="https://tradrx.io/shared/DAD01529995B" target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                  And every trade is public — check it yourself.
+                </a>
+              </p>
+              <p className="text-center text-[11px] text-muted-foreground/60 mb-16 max-w-xl mx-auto">
+                Some reviewers received a discount for sharing their honest feedback. We don't edit or pay for reviews.
+              </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-              {[
-                { name: "Marcus T.", result: "Up 42% in his first 90 days", text: "I've been in 5 different 'premium' groups. This is the only one where the setups actually hit the targets. The risk management framework alone saved me from a liquidation cascade.", avatarBg: "bg-blue-500/20 border-blue-500/30", avatarText: "text-blue-400" },
-                { name: "Sarah K.", result: "Now trading full-time", text: "The morning Discord analysis is my edge. It cuts through all the noise. I don't even check Twitter anymore — I read the breakdown, understand the math behind the setup, and execute.", avatarBg: "bg-purple-500/20 border-purple-500/30", avatarText: "text-purple-400" }
-              ].map((testimonial, i) => (
-                <div key={i} className="bg-card/30 border border-border p-8 rounded-xl">
-                  <div className="flex gap-0.5 mb-4" aria-label="5 out of 5 stars">
-                    {Array.from({ length: 5 }).map((_, s) => (
-                      <svg key={s} className="h-4 w-4 text-amber-400 fill-amber-400" viewBox="0 0 20 20" aria-hidden="true">
-                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                      </svg>
-                    ))}
-                  </div>
-                  <div className="flex items-center mb-4">
-                    <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold border ${testimonial.avatarBg} ${testimonial.avatarText}`}>
-                      {testimonial.name.charAt(0)}
-                    </div>
-                    <div className="ml-3">
-                      <p className="font-semibold">{testimonial.name}</p>
-                      <p className="text-sm text-primary font-medium">{testimonial.result}</p>
-                    </div>
-                  </div>
-                  <p className="text-muted-foreground italic leading-relaxed">"{testimonial.text}"</p>
-                </div>
-              ))}
+              <motion.div
+                className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto"
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, margin: "-60px" }}
+                variants={staggerContainer}
+              >
+                {reviews.map((review, i) => {
+                  const avatars = [
+                    "bg-blue-500/20 border-blue-500/30 text-blue-400",
+                    "bg-purple-500/20 border-purple-500/30 text-purple-400",
+                    "bg-emerald-500/20 border-emerald-500/30 text-emerald-400",
+                    "bg-primary/20 border-primary/30 text-primary",
+                  ];
+                  const rating = Math.max(1, Math.min(5, review.rating));
+                  return (
+                    <motion.div key={review.id ?? i} variants={fadeInUp} className="bg-card/30 border border-border p-8 rounded-xl">
+                      <div className="flex gap-0.5 mb-4" aria-label={`${rating} out of 5 stars`}>
+                        {Array.from({ length: 5 }).map((_, s) => (
+                          <svg key={s} className={`h-4 w-4 ${s < rating ? "text-amber-400 fill-amber-400" : "text-muted-foreground/30 fill-muted-foreground/30"}`} viewBox="0 0 20 20" aria-hidden="true">
+                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                          </svg>
+                        ))}
+                      </div>
+                      <div className="flex items-center mb-4">
+                        <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold border ${avatars[i % avatars.length]}`}>
+                          {review.authorName.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="ml-3">
+                          <p className="font-semibold">{review.authorName}</p>
+                          {review.result && <p className="text-sm text-primary font-medium">{review.result}</p>}
+                        </div>
+                      </div>
+                      <p className="text-muted-foreground italic leading-relaxed">"{review.body}"</p>
+                    </motion.div>
+                  );
+                })}
+              </motion.div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* Mid-page CTA — after social proof */}
         <div className="py-6 px-4 border-b border-border/50 bg-primary/5">
@@ -999,6 +1145,22 @@ export default function Home() {
                 </AccordionItem>
               ))}
             </Accordion>
+
+            {/* Still have questions — catch prospects who didn't find their answer */}
+            <div className="mt-10 text-center">
+              <p className="text-muted-foreground">
+                Still have questions?{" "}
+                <a
+                  href="https://tradrx.io/shared/DAD01529995B"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary font-medium hover:underline"
+                >
+                  Browse the live journal
+                </a>{" "}
+                or start your free trial — cancel before day 7 and pay nothing.
+              </p>
+            </div>
           </div>
         </section>
 
@@ -1024,6 +1186,12 @@ export default function Home() {
                   See the full journal first <ExternalLink className="ml-2 h-4 w-4" />
                 </Button>
               </a>
+            </div>
+            {/* Risk reversal — kill the last objection */}
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-primary" /> 7-day free trial</span>
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-primary" /> Cancel in one click</span>
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4 text-primary" /> Pay nothing if you cancel before day 7</span>
             </div>
           </div>
         </section>
@@ -1051,6 +1219,20 @@ export default function Home() {
           </div>
         </div>
       </footer>
+
+      {/* Sticky mobile CTA — appears after scrolling past the hero */}
+      <div
+        className={`sm:hidden fixed inset-x-0 bottom-0 z-50 border-t border-primary/30 bg-background/90 backdrop-blur-xl px-4 py-3 transition-transform duration-300 ${
+          scrolled ? "translate-y-0" : "translate-y-full"
+        }`}
+        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+      >
+        <a href="#pricing" data-testid="link-sticky-cta">
+          <Button className="w-full h-12 text-base font-bold shadow-[0_0_24px_rgba(247,147,26,0.35)]">
+            Start 7-Day Free Trial <ArrowRight className="ml-2 h-5 w-5" />
+          </Button>
+        </a>
+      </div>
     </div>
   );
 }

@@ -53,6 +53,20 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("recharts") || id.includes("d3-") || id.includes("victory-vendor"))
+            return "charts";
+          if (id.includes("framer-motion") || id.includes("motion-dom") || id.includes("motion-utils"))
+            return "motion";
+          if (id.includes("@clerk")) return "clerk";
+          if (id.includes("react-dom") || id.includes("/react/") || id.includes("scheduler"))
+            return "react-vendor";
+        },
+      },
+    },
   },
   server: {
     port,
@@ -61,6 +75,12 @@ export default defineConfig({
     allowedHosts: true,
     fs: {
       strict: true,
+    },
+    proxy: {
+      "/api": {
+        target: process.env.API_TARGET ?? "http://localhost:8084",
+        changeOrigin: true,
+      },
     },
   },
   preview: {

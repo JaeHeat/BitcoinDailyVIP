@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { PortalLayout } from "@/components/portal-layout";
 import { Info } from "lucide-react";
 
@@ -39,9 +39,13 @@ function NumberInput({
   hint?: string;
   error?: string;
 }) {
+  const id = useId();
+  const hintId = hint ? `${id}-hint` : undefined;
+  const errorId = error ? `${id}-error` : undefined;
+  const describedBy = [hintId, errorId].filter(Boolean).join(" ") || undefined;
   return (
     <div>
-      <label className="text-sm font-medium text-foreground mb-1.5 block">{label}</label>
+      <label htmlFor={id} className="text-sm font-medium text-foreground mb-1.5 block">{label}</label>
       <div className="relative">
         {prefix && (
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm select-none">
@@ -49,11 +53,14 @@ function NumberInput({
           </span>
         )}
         <input
+          id={id}
           type="number"
           min="0"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
+          aria-describedby={describedBy}
+          aria-invalid={error ? true : undefined}
           className={`w-full h-11 rounded-lg border border-border/60 bg-background/60 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/40 transition ${prefix ? "pl-7" : "pl-3"} ${suffix ? "pr-8" : "pr-3"}`}
         />
         {suffix && (
@@ -62,8 +69,8 @@ function NumberInput({
           </span>
         )}
       </div>
-      {hint && <p className="text-xs text-muted-foreground mt-1.5">{hint}</p>}
-      {error && <p className="text-xs text-red-400 mt-1.5">{error}</p>}
+      {hint && <p id={hintId} className="text-xs text-muted-foreground mt-1.5">{hint}</p>}
+      {error && <p id={errorId} className="text-xs text-red-400 mt-1.5">{error}</p>}
     </div>
   );
 }
@@ -98,6 +105,7 @@ function RiskInput({ risk, setRisk }: { risk: string; setRisk: (v: string) => vo
           value={risk}
           onChange={(e) => setRisk(e.target.value)}
           placeholder="1"
+          aria-label="Risk per trade (percent)"
           className="w-full h-11 rounded-lg border border-border/60 bg-background/60 px-3 pr-8 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
         />
         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm select-none">%</span>
@@ -170,6 +178,7 @@ function LeverageInput({ leverage, setLeverage }: { leverage: string; setLeverag
           value={leverage}
           onChange={(e) => setLeverage(e.target.value)}
           placeholder="e.g. 10"
+          aria-label="Leverage (optional)"
           className="w-full h-11 rounded-lg border border-border/60 bg-background/60 px-3 pr-8 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition"
         />
         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm select-none">×</span>

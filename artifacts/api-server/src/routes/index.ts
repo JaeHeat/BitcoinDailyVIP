@@ -11,6 +11,7 @@ import userRouter from "./user";
 import openaiRouter from "./openai";
 import supportRouter from "./support";
 import memberRouter from "./member";
+import reviewsRouter from "./reviews";
 
 const router: IRouter = Router();
 
@@ -25,6 +26,7 @@ router.use(subscriptionRouter);
 router.use(discordRouter);
 router.use(winbackRouter);
 router.use(memberRouter);
+router.use(reviewsRouter);
 router.use(adminRouter);
 
 export default router;

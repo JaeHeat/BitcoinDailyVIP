@@ -135,7 +135,7 @@ router.post("/winback/cron", async (req: Request, res: Response) => {
  * Token is a UUID (36 chars) — not the integer job ID, so enumeration is not possible.
  */
 router.get("/winback/open/:token", async (req: Request, res: Response) => {
-  const { token } = req.params;
+  const token = String(req.params.token);
 
   // Validate token looks like a UUID before touching the DB
   if (token && /^[0-9a-f-]{36}$/i.test(token)) {
@@ -157,7 +157,7 @@ router.get("/winback/open/:token", async (req: Request, res: Response) => {
  * session with the stored promo code pre-applied, and redirects.
  */
 router.get("/winback/click/:token", async (req: Request, res: Response) => {
-  const { token } = req.params;
+  const token = String(req.params.token);
 
   // Validate token format before touching the DB
   if (!token || !/^[0-9a-f-]{36}$/i.test(token)) {

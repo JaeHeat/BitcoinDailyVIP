@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useUser } from "@clerk/react";
+import { useUser } from "@/lib/clerk-compat";
 import { useLocation } from "wouter";
 import { useGetDiscordSyncLogs, ApiError } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";

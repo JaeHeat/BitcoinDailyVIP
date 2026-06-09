@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useUser } from "@clerk/react";
+import { useUser } from "@/lib/clerk-compat";
 import { useLocation, Link } from "wouter";
 import {
   useGetMemberProfile,

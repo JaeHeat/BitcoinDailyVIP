@@ -1,0 +1,19 @@
+User-agent: *
+Allow: /
+Allow: /privacy
+Allow: /terms
+
+# Member & admin areas are auth-gated — keep them out of the index
+Disallow: /portal
+Disallow: /admin
+Disallow: /getting-started
+Disallow: /resources
+Disallow: /calculator
+Disallow: /exchanges
+Disallow: /prop-firms
+Disallow: /guides
+Disallow: /mentorship
+Disallow: /sign-in
+Disallow: /sign-up
+
+Sitemap: https://bitcoindailyvip.com/sitemap.xml

@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "@/hooks/use-toast";
-import { useUser } from "@clerk/react";
+import { useUser } from "@/lib/clerk-compat";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { PortalLayout } from "@/components/portal-layout";
+import { TradeLogger } from "@/components/trade-logger";
+import { ReviewPrompt } from "@/components/review-prompt";
+import { track } from "@/lib/analytics";
 import {
   useGetSubscriptionStatus,
   useCreateCheckoutSession,
@@ -64,8 +67,6 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 const GS_STORAGE_KEY = "bdv_gs_progress";
 const GS_TOTAL = 5;
-const REVIEW_STORAGE_KEY = "bdv_review_left";
-const REVIEW_URL = "https://www.trustpilot.com/review/bitcoindailyvip.com";
 
 function useGettingStartedProgress() {
   const [count, setCount] = useState(() => {
@@ -100,32 +101,6 @@ function useGettingStartedProgress() {
   return count;
 }
 
-function useReviewState() {
-  const [reviewLeft, setReviewLeft] = useState(() => {
-    try { return localStorage.getItem(REVIEW_STORAGE_KEY) === "1"; } catch { return false; }
-  });
-
-  useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}api/user/journey`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { reviewLeft: boolean } | null) => {
-        if (data?.reviewLeft) {
-          localStorage.setItem(REVIEW_STORAGE_KEY, "1");
-          setReviewLeft(true);
-        }
-      })
-      .catch(() => {/* use localStorage */});
-  }, []);
-
-  function markReview() {
-    localStorage.setItem(REVIEW_STORAGE_KEY, "1");
-    setReviewLeft(true);
-    window.open(REVIEW_URL, "_blank", "noopener,noreferrer");
-    fetch(`${import.meta.env.BASE_URL}api/user/mark-review`, { method: "POST" }).catch(() => {});
-  }
-
-  return { reviewLeft, markReview };
-}
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -139,7 +114,6 @@ export default function Portal() {
   const [, setLocation] = useLocation();
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
   const gsCompleted = useGettingStartedProgress();
-  const { reviewLeft, markReview } = useReviewState();
 
   // Session-based welcome greeting — fires once per browser session for returning members
   useEffect(() => {
@@ -155,38 +129,6 @@ export default function Portal() {
       localStorage.setItem(VISITED_KEY, "1");
     }
   }, [user?.firstName]);
-
-  // ── Review discount ───────────────────────────────────────────────────────
-  const REVIEW_URL = "https://www.trustpilot.com/review/bitcoindailyvip.com";
-  const [reviewShowForm, setReviewShowForm] = useState(false);
-  const [reviewUrl, setReviewUrl] = useState("");
-  const [reviewSubmitting, setReviewSubmitting] = useState(false);
-  const [reviewSubmitError, setReviewSubmitError] = useState("");
-  const [reviewSubmitDone, setReviewSubmitDone] = useState(false);
-
-  async function submitReview(e: React.FormEvent) {
-    e.preventDefault();
-    setReviewSubmitting(true);
-    setReviewSubmitError("");
-    try {
-      const res = await fetch(`${import.meta.env.BASE_URL}api/subscription/review-submit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ reviewUrl }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(data.error ?? "Something went wrong");
-      }
-      setReviewSubmitDone(true);
-      queryClient.invalidateQueries({ queryKey: ["subscriptionStatus"] });
-    } catch (err) {
-      setReviewSubmitError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setReviewSubmitting(false);
-    }
-  }
 
   // ── Support Hub Modal ──────────────────────────────────────────────────────
   type SupportStep = "hub" | "faq" | "ticket" | "done";
@@ -432,6 +374,7 @@ export default function Portal() {
       const winRate = Math.round((wins / total) * 100);
       if (winRate < 70) continue;
       const pl = slice.reduce((sum, t) => sum + t.pl, 0);
+      if (pl <= 0) continue; // the "on a heater" panel must be genuinely profitable
       if (!best || winRate > best.winRate || (winRate === best.winRate && total > best.tradeCount)) {
         best = { wins, losses, total, winRate, pl, tradeCount: total };
       }
@@ -560,6 +503,7 @@ export default function Portal() {
   });
 
   function requestCheckout(plan: CheckoutSessionRequestPriceType, coupon?: string) {
+    track("Checkout Started", { plan });
     setPendingPlan(plan);
     setPendingCoupon(coupon);
     setTosAgreed(false);
@@ -923,6 +867,36 @@ export default function Portal() {
               </span>
             </div>
           )}
+
+          {/* ── Your next step — one clear action, adaptive ─────────── */}
+          {hasActiveSub && !isLoading && (() => {
+            let step;
+            if (!discordStatus?.connected) {
+              step = { label: "Your next step", title: "Connect your Discord", desc: "Link Discord to unlock your VIP role and start receiving live signals.", cta: "Connect Discord", onClick: handleConnectDiscord, href: undefined };
+            } else if (gsCompleted < GS_TOTAL) {
+              step = { label: "Your next step", title: "Finish Getting Started", desc: `${gsCompleted}/${GS_TOTAL} modules done — a 12-minute walkthrough of signals, sizing, and your first week.`, cta: "Continue", onClick: () => setLocation(`${basePath}/getting-started`), href: undefined };
+            } else {
+              step = { label: "You're all set", title: "Follow today's setups", desc: "Open Discord, read the morning breakdown, and trade the live signals as they trigger.", cta: "Open Discord", onClick: undefined, href: "https://discord.gg/bitcoindailyvip" };
+            }
+            return (
+              <div className="mt-4 rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/10 to-transparent p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-primary mb-1">{step.label}</p>
+                  <p className="font-bold text-lg leading-tight">{step.title}</p>
+                  <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{step.desc}</p>
+                </div>
+                {step.href ? (
+                  <a href={step.href} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                    <Button className="font-bold shadow-[0_0_20px_rgba(247,147,26,0.25)]">{step.cta} <ChevronRight className="ml-1.5 h-4 w-4" /></Button>
+                  </a>
+                ) : (
+                  <Button onClick={step.onClick} disabled={step.cta === "Connect Discord" && discordLinking} className="shrink-0 font-bold shadow-[0_0_20px_rgba(247,147,26,0.25)]">
+                    {step.cta === "Connect Discord" && discordLinking ? "Redirecting…" : step.cta} <ChevronRight className="ml-1.5 h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {isLoading ? (
@@ -1241,8 +1215,8 @@ export default function Portal() {
             {hasActiveSub && (() => {
               const guidesDone = gsCompleted >= GS_TOTAL;
               const discordDone = !!discordStatus?.connected;
-              const allDone = guidesDone && discordDone && reviewLeft;
-              const doneCount = [guidesDone, discordDone, reviewLeft].filter(Boolean).length;
+              const allDone = guidesDone && discordDone;
+              const doneCount = [guidesDone, discordDone].filter(Boolean).length;
 
               if (allDone) {
                 return (
@@ -1251,7 +1225,7 @@ export default function Portal() {
                       <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
                       <div>
                         <p className="font-semibold text-sm text-emerald-400">Journey complete!</p>
-                        <p className="text-xs text-muted-foreground">You've completed all 3 steps — you're all set.</p>
+                        <p className="text-xs text-muted-foreground">You've completed both steps — you're all set.</p>
                       </div>
                       <button
                         onClick={() => setLocation(`${basePath}/getting-started`)}
@@ -1309,25 +1283,6 @@ export default function Portal() {
                     </Button>
                   ) : null,
                 },
-                {
-                  id: "review",
-                  done: reviewLeft,
-                  icon: <Star className="h-4 w-4" />,
-                  title: "Leave a review",
-                  desc: reviewLeft
-                    ? "Thank you — reviews help other traders find us"
-                    : "Takes 30 seconds and helps other traders discover Bitcoin Daily VIP",
-                  action: !reviewLeft ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs border-amber-500/40 text-amber-400 hover:bg-amber-500/10"
-                      onClick={markReview}
-                    >
-                      Write Review →
-                    </Button>
-                  ) : null,
-                },
               ];
 
               return (
@@ -1337,13 +1292,13 @@ export default function Portal() {
                     <div className="flex items-center justify-between gap-4">
                       <CardTitle className="text-base">Your Member Journey</CardTitle>
                       <span className="text-xs font-medium text-muted-foreground tabular-nums">
-                        {doneCount} / 3 complete
+                        {doneCount} / 2 complete
                       </span>
                     </div>
                     <div className="mt-2 h-1.5 rounded-full bg-border overflow-hidden">
                       <div
                         className="h-full bg-gradient-to-r from-primary to-amber-400 rounded-full transition-all duration-700"
-                        style={{ width: `${(doneCount / 3) * 100}%` }}
+                        style={{ width: `${(doneCount / 2) * 100}%` }}
                       />
                     </div>
                   </CardHeader>
@@ -1426,6 +1381,48 @@ export default function Portal() {
               </CardContent>
             </Card>
             )}
+
+            {/* ── Never miss a signal — notification setup ─────────────────── */}
+            {hasActiveSub && (
+              <Card className="border-border/50 bg-card/50">
+                <CardHeader className="pb-3 pt-5">
+                  <div className="flex items-center gap-2">
+                    <Bell className="h-4 w-4 text-primary" />
+                    <CardTitle className="text-base">Never miss a signal</CardTitle>
+                  </div>
+                  <CardDescription>Signals are time-sensitive — set this up once so an alert reaches you the moment a setup triggers.</CardDescription>
+                </CardHeader>
+                <CardContent className="pb-5 space-y-3">
+                  {[
+                    { n: 1, t: "Turn on Discord mobile push", d: "Install the Discord app and allow notifications. In the server, tap the bell → \"All Messages\" for the signals channel." },
+                    { n: 2, t: "Star the #signals channel", d: "So it's always one tap away — no scrolling to find the latest setup." },
+                    { n: 3, t: "(Optional) Desktop alerts", d: "Keep Discord open on desktop during your trading hours for instant pop-ups." },
+                  ].map((s) => (
+                    <div key={s.n} className="flex gap-3">
+                      <div className="h-6 w-6 rounded-full bg-primary/10 border border-primary/30 text-primary text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{s.n}</div>
+                      <div>
+                        <p className="text-sm font-medium">{s.t}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{s.d}</p>
+                      </div>
+                    </div>
+                  ))}
+                  <a
+                    href="https://discord.gg/bitcoindailyvip"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline pt-1"
+                  >
+                    Open Discord to set it up <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* ── My results — personal trade journal ──────────────────────── */}
+            {hasActiveSub && <TradeLogger />}
+
+            {/* ── Leave a review (only once qualified) → 25% off next month ── */}
+            {hasActiveSub && <ReviewPrompt />}
 
             {/* ── Subscription section — gated by hasActiveSub ─────────────── */}
             {!hasActiveSub ? (
@@ -1696,6 +1693,7 @@ export default function Portal() {
                         <input
                           type="text"
                           placeholder="Promo code (optional)"
+                          aria-label="Promo code"
                           value={couponCode}
                           onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                           className="w-full h-9 rounded-md border border-border/60 bg-card/30 px-3 pr-8 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition font-mono tracking-wider"
@@ -2087,85 +2085,6 @@ export default function Portal() {
               </>
             )}
 
-            {/* ── Review for discount — shown to active members who haven't claimed ── */}
-            {hasActiveSub && !status?.reviewDiscountClaimed && (
-              <Card className="border-primary/20 bg-primary/5">
-                <CardContent className="py-5 space-y-4">
-                  {status?.reviewDiscountClaimed ? (
-                    /* ── Approved ── */
-                    <div className="flex items-center gap-3 text-sm">
-                      <span className="text-lg">🎉</span>
-                      <div>
-                        <p className="font-medium">25% discount applied!</p>
-                        <p className="text-muted-foreground text-xs mt-0.5">It'll be deducted from your next invoice. Thank you!</p>
-                      </div>
-                    </div>
-                  ) : reviewSubmitDone || status?.reviewPending ? (
-                    /* ── Pending verification ── */
-                    <div className="flex items-center gap-3 text-sm">
-                      <span className="text-lg">⏳</span>
-                      <div>
-                        <p className="font-medium">Review submitted — pending verification</p>
-                        <p className="text-muted-foreground text-xs mt-0.5">We'll verify your review and apply the 25% discount within 24 hours.</p>
-                      </div>
-                    </div>
-                  ) : !reviewShowForm ? (
-                    /* ── Step 1: prompt ── */
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                      <div>
-                        <p className="font-medium text-sm">Enjoying Bitcoin Daily VIP?</p>
-                        <p className="text-sm text-muted-foreground mt-0.5">
-                          Leave us a Trustpilot review and get <span className="text-primary font-semibold">25% off your next month</span>.
-                        </p>
-                      </div>
-                      <a
-                        href={REVIEW_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => setReviewShowForm(true)}
-                      >
-                        <Button variant="outline" size="sm" className="border-primary/30 text-primary hover:bg-primary/10 shrink-0">
-                          Leave a Review
-                        </Button>
-                      </a>
-                    </div>
-                  ) : (
-                    /* ── Step 2: submit URL ── */
-                    <form onSubmit={submitReview} className="space-y-3">
-                      <div>
-                        <p className="font-medium text-sm">Paste your Trustpilot review link</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          After posting your review, copy the link from your browser and paste it below. We'll verify it and apply your discount within 24 hours.
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <input
-                          type="url"
-                          value={reviewUrl}
-                          onChange={(e) => setReviewUrl(e.target.value)}
-                          placeholder="https://www.trustpilot.com/reviews/..."
-                          required
-                          className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/50"
-                        />
-                        <Button type="submit" size="sm" disabled={reviewSubmitting || !reviewUrl.trim()}>
-                          {reviewSubmitting ? "Submitting…" : "Submit"}
-                        </Button>
-                      </div>
-                      {reviewSubmitError && (
-                        <p className="text-xs text-destructive">{reviewSubmitError}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground/60">
-                        Haven't left your review yet?{" "}
-                        <a href={REVIEW_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-muted-foreground">
-                          Open Trustpilot
-                        </a>
-                      </p>
-                    </form>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
             {/* ── Contact / Support — always visible ──────────────────────── */}
             <Card className="border-border/50 bg-card/50">
               <CardContent className="py-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -2223,11 +2142,13 @@ export default function Portal() {
                 onClick={clearChat}
                 className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                 title="Clear conversation"
+                aria-label="Clear conversation"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => setChatOpen(false)}
+                aria-label="Minimize chat"
                 className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
               >
                 <ChevronDown className="w-4 h-4" />
@@ -2312,6 +2233,7 @@ export default function Portal() {
                   }
                 }}
                 placeholder="Ask anything…"
+                aria-label="Message the assistant"
                 rows={1}
                 className="flex-1 resize-none rounded-xl border border-border bg-muted/50 px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 max-h-28 overflow-y-auto"
                 style={{ minHeight: "38px" }}
@@ -2319,6 +2241,7 @@ export default function Portal() {
               <button
                 onClick={sendChatMessage}
                 disabled={!chatInput.trim() || chatLoading || !chatConvId}
+                aria-label="Send message"
                 className="shrink-0 w-9 h-9 rounded-xl bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <Send className="w-3.5 h-3.5" />
@@ -2345,6 +2268,7 @@ export default function Portal() {
             onClick={openChat}
             className="relative w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-110 hover:shadow-[0_0_0_4px_hsl(var(--primary)/0.25)] hover:bg-primary/90"
             title="Open AI Assistant"
+            aria-label={chatUnread ? "Open AI assistant (1 unread message)" : "Open AI assistant"}
           >
             <Bot className="w-5 h-5" />
             {chatUnread && (
@@ -2483,8 +2407,9 @@ export default function Portal() {
                 <form onSubmit={submitTicket} className="p-5 space-y-4">
                   <p className="text-sm text-muted-foreground">Describe your issue and we'll follow up by email — usually within a few hours.</p>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Subject</label>
+                    <label htmlFor="ticket-subject" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Subject</label>
                     <input
+                      id="ticket-subject"
                       type="text"
                       value={ticketSubject}
                       onChange={(e) => setTicketSubject(e.target.value)}
@@ -2494,8 +2419,9 @@ export default function Portal() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Message</label>
+                    <label htmlFor="ticket-message" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Message</label>
                     <textarea
+                      id="ticket-message"
                       value={ticketMessage}
                       onChange={(e) => setTicketMessage(e.target.value)}
                       placeholder="Describe what's happening in as much detail as you can…"

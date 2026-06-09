@@ -918,7 +918,7 @@ router.get("/admin/review-submissions", async (_req: Request, res: Response) => 
 router.post("/admin/review-approve/:userId", async (req: Request, res: Response) => {
   try {
     const stripe = getStripe();
-    const userId = parseInt(req.params.userId, 10);
+    const userId = parseInt(String(req.params.userId), 10);
     if (isNaN(userId)) { res.status(400).json({ error: "Invalid user ID" }); return; }
 
     const user = await db.query.usersTable.findFirst({ where: eq(usersTable.id, userId) });

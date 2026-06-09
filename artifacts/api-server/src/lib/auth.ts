@@ -4,7 +4,21 @@ import { usersTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import type { Request, Response, NextFunction } from "express";
 
+// ── DEV-ONLY AUTH BYPASS ──────────────────────────────────────────────
+// When NODE_ENV !== "production" AND DEV_AUTH_BYPASS === "1", all auth/member/
+// admin gates pass for a fixed mock user so the portal/admin can be exercised
+// locally without a real Clerk session. Fails closed in production (the
+// NODE_ENV guard means it can never grant access on a prod deploy).
+export const DEV_AUTH_BYPASS =
+  process.env.NODE_ENV !== "production" && process.env.DEV_AUTH_BYPASS === "1";
+const DEV_USER_ID = process.env.DEV_AUTH_USER_ID || "dev_user";
+
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (DEV_AUTH_BYPASS) {
+    req.userId = DEV_USER_ID;
+    next();
+    return;
+  }
   const auth = getAuth(req);
   if (!auth?.userId) {
     res.status(401).json({ error: "Unauthorized" });
@@ -26,6 +40,10 @@ export async function requireAdmin(
   res: Response,
   next: NextFunction,
 ) {
+  if (DEV_AUTH_BYPASS) {
+    next();
+    return;
+  }
   try {
     const clerkId = req.userId!;
     const adminEnvId = process.env.ADMIN_CLERK_USER_ID;
@@ -78,6 +96,10 @@ export async function requireMemberAccess(
   res: Response,
   next: NextFunction,
 ) {
+  if (DEV_AUTH_BYPASS) {
+    next();
+    return;
+  }
   try {
     const clerkId = req.userId!;
     const user = await db.query.usersTable.findFirst({
@@ -107,17 +129,28 @@ export async function getOrCreateUser(clerkId: string) {
   });
 
   if (!user) {
-    const clerkUser = await clerkClient.users.getUser(clerkId);
-    const email =
-      clerkUser.emailAddresses.find(
-        (e) => e.id === clerkUser.primaryEmailAddressId,
-      )?.emailAddress ||
-      clerkUser.emailAddresses[0]?.emailAddress ||
-      "";
+    let email = "";
+    const extra: Partial<typeof usersTable.$inferInsert> = {};
+    if (DEV_AUTH_BYPASS && clerkId === DEV_USER_ID) {
+      // Skip the Clerk lookup for the mock dev user (Clerk doesn't know it),
+      // and grant a long manual trial so member-gated UI renders locally.
+      email = process.env.DEV_AUTH_EMAIL || "dev@localhost";
+      const trialEnd = new Date();
+      trialEnd.setFullYear(trialEnd.getFullYear() + 1);
+      extra.manualTrialEndsAt = trialEnd;
+    } else {
+      const clerkUser = await clerkClient.users.getUser(clerkId);
+      email =
+        clerkUser.emailAddresses.find(
+          (e) => e.id === clerkUser.primaryEmailAddressId,
+        )?.emailAddress ||
+        clerkUser.emailAddresses[0]?.emailAddress ||
+        "";
+    }
 
     const [created] = await db
       .insert(usersTable)
-      .values({ clerkId, email })
+      .values({ clerkId, email, ...extra })
       .returning();
     user = created;
   }
